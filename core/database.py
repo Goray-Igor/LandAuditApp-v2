@@ -5,6 +5,10 @@ import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
+from core.logger import get_logger
+
+logger = get_logger(__name__)
+
 # Завантажуємо змінні з файлу .env
 load_dotenv()
 
@@ -18,13 +22,13 @@ def get_engine():
     """Створює та повертає об'єкт підключення до бази даних SQLAlchemy."""
     # Кодуємо пароль, щоб уникнути помилок, якщо в ньому є спецсимволи (наприклад, @ або !)
     encoded_password = urllib.parse.quote_plus(DB_PASSWORD)
-    
+
     # Формуємо рядок підключення для MS SQL через pyodbc
     connection_string = (
         f"mssql+pyodbc://{DB_USERNAME}:{encoded_password}@{DB_SERVER}/{DB_DATABASE}"
         "?driver=ODBC+Driver+17+for+SQL+Server"
     )
-    
+
     # Створюємо двигун (engine)
     engine = create_engine(connection_string, fast_executemany=True)
     return engine
@@ -42,6 +46,7 @@ def test_connection():
     except Exception as e:
         print("❌ Помилка підключення до бази даних:")
         print(e)
+        logger.exception("Помилка підключення до БД")
         return False
 
 
@@ -49,14 +54,14 @@ def test_connection():
 def search_parcels(search_term):
     """Шукає ділянки за частиною кадастрового номера (наприклад, останні 4 цифри)."""
     engine = get_engine()
-    
+
     # Використовуємо параметризований запит SQLAlchemy для безпеки
     query = text("""
-    SELECT cadastral_number, district, village_council 
-    FROM Parcel_reestr 
+    SELECT cadastral_number, district, village_council
+    FROM Parcel_reestr
     WHERE cadastral_number LIKE :search
     """)
-    
+
     try:
         # Додаємо % з обох боків, щоб шукати входження в будь-якому місці рядка
         with engine.connect() as conn:
@@ -64,47 +69,50 @@ def search_parcels(search_term):
         return df
     except Exception as e:
         print(f"Помилка при пошуку ділянок: {e}")
+        logger.exception("Помилка пошуку ділянок: term=%s", search_term)
         return pd.DataFrame()
 
 def get_parcel_data(cadastral_number):
     """Отримує всі дані з реєстру для одного кадастрового номера."""
     engine = get_engine()
     query = text("SELECT * FROM Parcel_reestr WHERE cadastral_number = :cad_num")
-    
+
     try:
         with engine.connect() as conn:
             df = pd.read_sql(query, conn, params={"cad_num": cadastral_number})
-        
+
         # Якщо знайшли, повертаємо перший рядок як словник (dictionary)
         if not df.empty:
             return df.iloc[0].to_dict()
         return None
     except Exception as e:
         print(f"Помилка при отриманні даних ділянки: {e}")
+        logger.exception("Помилка отримання даних ділянки: %s", cadastral_number)
         return None
 
 def get_sublease_data(cadastral_number):
     """Отримує дані ВИКЛЮЧНО про суборенду з таблиці Usage_Rights_reestr."""
     engine = get_engine()
-    
-    # Додали умову AND usage_right_type LIKE '%суборенди%' 
+
+    # Додали умову AND usage_right_type LIKE '%суборенди%'
     # Вона відфільтрує всі інші записи (наприклад, звичайну оренду), якщо вони потрапили в цю таблицю
     query = text("""
-        SELECT * FROM Usage_Rights_reestr 
-        WHERE cadastral_number = :cad_num 
+        SELECT * FROM Usage_Rights_reestr
+        WHERE cadastral_number = :cad_num
         AND LOWER(usage_right_type) LIKE '%суборенди%'
     """)
-    
+
     try:
         with engine.connect() as conn:
             df = pd.read_sql(query, conn, params={"cad_num": cadastral_number})
-        
+
         # Якщо запис про суборенду знайдено, повертаємо його
         if not df.empty:
             return df.iloc[0].to_dict()
         return None
     except Exception as e:
         print(f"Помилка при отриманні даних суборенди: {e}")
+        logger.exception("Помилка отримання суборенди: %s", cadastral_number)
         return None
 
 # ==========================================
@@ -133,7 +141,7 @@ def get_agreements_table(contract_type, counterparty_type):
 def check_existing_audit(cadastral_number, contract_type, counterparty_type):
     table_name = get_target_table(contract_type, counterparty_type)
     if not table_name: return None
-    
+
     engine = get_engine()
     query = text(f"SELECT * FROM {table_name} WHERE cadastral_number = :cad_num AND contract_type = :ct AND counterparty_type = :cpt")
     try:
@@ -143,68 +151,80 @@ def check_existing_audit(cadastral_number, contract_type, counterparty_type):
         return None
     except Exception as e:
         print(f"Помилка при перевірці дублів: {e}")
+        logger.exception("Помилка перевірки дублів: %s/%s/%s", cadastral_number, contract_type, counterparty_type)
         return None
 
 def get_additional_agreements(cadastral_number, contract_type, counterparty_type):
     table_name = get_agreements_table(contract_type, counterparty_type)
     if not table_name: return []
-    
+
     engine = get_engine()
     query = text(f"SELECT * FROM {table_name} WHERE cadastral_number = :cad_num")
     try:
         with engine.connect() as conn:
             df = pd.read_sql(query, conn, params={"cad_num": cadastral_number})
         return df.to_dict(orient='records') if not df.empty else []
-    except Exception as e:
+    except Exception:
+        logger.exception("Помилка читання додаткових угод: %s", cadastral_number)
         return []
 
 def update_audit_lease(audit_data, agreements_list=None):
     table_name = get_target_table(audit_data['contract_type'], audit_data['counterparty_type'])
     agr_table_name = get_agreements_table(audit_data['contract_type'], audit_data['counterparty_type'])
-    
+
     engine = get_engine()
     try:
-        with engine.begin() as conn: 
-            conn.execute(text(f"DELETE FROM {table_name} WHERE cadastral_number = :cad_num AND contract_type = :ct AND counterparty_type = :cpt"), 
+        with engine.begin() as conn:
+            conn.execute(text(f"DELETE FROM {table_name} WHERE cadastral_number = :cad_num AND contract_type = :ct AND counterparty_type = :cpt"),
                          {"cad_num": audit_data['cadastral_number'], "ct": audit_data['contract_type'], "cpt": audit_data['counterparty_type']})
-            
+
             if agr_table_name:
-                conn.execute(text(f"DELETE FROM {agr_table_name} WHERE cadastral_number = :cad_num"), 
+                conn.execute(text(f"DELETE FROM {agr_table_name} WHERE cadastral_number = :cad_num"),
                              {"cad_num": audit_data['cadastral_number']})
-            
+
+        logger.info("Аудит збережено: %s | %s/%s | аудитор=%s",
+            audit_data['cadastral_number'], audit_data['contract_type'],
+            audit_data['counterparty_type'], audit_data.get('auditor_code'))
+
         return save_audit_lease(audit_data, agreements_list)
     except Exception as e:
         print(f"Помилка при оновленні: {e}")
+        logger.exception("Помилка оновлення аудиту: %s", audit_data.get('cadastral_number'))
         return False
 
 def save_audit_lease(audit_data, agreements_list=None):
     table_name = get_target_table(audit_data['contract_type'], audit_data['counterparty_type'])
     agr_table_name = get_agreements_table(audit_data['contract_type'], audit_data['counterparty_type'])
-    
+
     engine = get_engine()
     df_main = pd.DataFrame([audit_data])
     df_main['updated_at'] = pd.Timestamp.now()
-    
+
     if 'id' in df_main.columns:
         df_main = df_main.drop(columns=['id'])
-    
+
     try:
         df_main.to_sql(table_name, con=engine, if_exists='append', index=False)
-        
+
         if agreements_list and len(agreements_list) > 0 and agr_table_name:
             df_agr = pd.DataFrame(agreements_list)
             df_agr['cadastral_number'] = audit_data['cadastral_number']
             df_agr['auditor_code'] = audit_data['auditor_code']
             df_agr['updated_at'] = pd.Timestamp.now()
-            
+
             if 'id' in df_agr.columns:
                 df_agr = df_agr.drop(columns=['id'])
-                
+
             df_agr.to_sql(agr_table_name, con=engine, if_exists='append', index=False)
-            
+
+        logger.info("Аудит збережено: %s | %s/%s | аудитор=%s",
+            audit_data['cadastral_number'], audit_data['contract_type'],
+            audit_data['counterparty_type'], audit_data.get('auditor_code'))
+
         return True
     except Exception as e:
         print(f"Помилка при збереженні: {e}")
+        logger.exception("Помилка збереження аудиту: %s", audit_data.get('cadastral_number'))
         return False
 
 def get_ipn_by_cadastral(cadastral_number):
@@ -212,37 +232,38 @@ def get_ipn_by_cadastral(cadastral_number):
     engine = get_engine()
     # Убрали TOP 1, теперь ищем все совпадения
     query = text("SELECT ipn_code FROM IPN_reestr WHERE cadastral_number = :cad_num AND ipn_code IS NOT NULL")
-    
+
     try:
         with engine.connect() as conn:
             # fetchall() возвращает список всех найденных строк
             results = conn.execute(query, {"cad_num": cadastral_number}).fetchall()
-            
+
             if results:
                 # Извлекаем ИНН из каждой строки и очищаем от пробелов
                 ipns = [str(row[0]).strip() for row in results if row[0]]
-                
+
                 # Удаляем возможные дубликаты (оставляя уникальные ИНН), сохраняя порядок
                 unique_ipns = list(dict.fromkeys(ipns))
-                
+
                 # Склеиваем список в одну строку через разделитель " / "
                 return " / ".join(unique_ipns)
-                
+
             return ""
     except Exception as e:
         print(f"Помилка пошуку ІПН: {e}")
+        logger.exception("Помилка пошуку ІПН: %s", cadastral_number)
         return ""
-    
+
 def get_dkp_number_by_cadastral(cadastral_number):
     """Шукає номер договору ДКП в таблиці DKP_reestr та з'єднує їх через '/' """
     engine = get_engine()
     # Шукаємо всі записи ДКП для цього кадастрового
     query = text("SELECT dkp_contract_number FROM DKP_reestr WHERE cadastral_number = :cad_num AND dkp_contract_number IS NOT NULL")
-    
+
     try:
         with engine.connect() as conn:
             results = conn.execute(query, {"cad_num": cadastral_number}).fetchall()
-            
+
             if results:
                 # Витягуємо номери, очищаємо від пробілів
                 dkps = [str(row[0]).strip() for row in results if row[0]]
@@ -250,10 +271,11 @@ def get_dkp_number_by_cadastral(cadastral_number):
                 unique_dkps = list(dict.fromkeys(dkps))
                 # Склеюємо через " / "
                 return " / ".join(unique_dkps)
-                
+
             return ""
     except Exception as e:
         print(f"Помилка пошуку ДКП: {e}")
+        logger.exception("Помилка пошуку ДКП: %s", cadastral_number)
         return ""
 
 # Цей блок виконається тільки якщо запустити саме цей файл (для перевірки)

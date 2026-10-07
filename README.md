@@ -38,11 +38,9 @@ LandAuditApp/
 ## Запуск (Windows, PowerShell)
 
 ```powershell
-py -3.12 -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env      # заповнити значення
-streamlit run app.py
+pip install -r requirements-dev.txt
+ruff check .
+ruff format .
 ```
 
 Потрібен встановлений ODBC Driver 17 for SQL Server.
@@ -81,3 +79,29 @@ pyinstaller run_app.spec
 - ДКП: номер договору, дата ДКП права оренди, розмір оплати, наявність акту
   приймання-передачі, наявність додатка (реєстр ділянок), сума платіжної
   інструкції, примітка
+
+## Проверка
+# 1. Окружение
+python --version
+pip check
+python -c "import streamlit, pandas, numpy, sqlalchemy, pyodbc, openpyxl, dotenv; print('OK', streamlit.__version__, pandas.__version__)"
+
+# 2. Синтаксис, предупреждения считаем ошибками
+python -W error -m compileall -f -q app.py run_app.py core ui forms form_blocks scripts
+
+# 3. Ссылки на удалённое и устаревшее
+git grep -n "components"
+git grep -n "use_container_width"
+
+# 4. Линтер
+ruff check .
+
+# 5. БД (нужен заполненный .env)
+python -m core.database
+
+# 6. Ручной прогон
+streamlit run app.py
+
+# 7. Git
+git status
+git check-ignore -v .env data\inn.xlsxgit 

@@ -1,7 +1,11 @@
-import streamlit as st
-from core.utils import parse_to_date, extract_years
-from core.database import get_additional_agreements
 import datetime
+
+import streamlit as st
+
+from core.database import get_additional_agreements
+from core.utils import extract_years, parse_to_date
+
+
 def render_group_agreements(cadastral_number, existing_audit, contract_type, counterparty_type):
     """
     Малює блок додаткових угод та повертає список угод для збереження.

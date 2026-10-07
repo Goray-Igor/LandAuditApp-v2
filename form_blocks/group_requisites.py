@@ -13,7 +13,7 @@ from core.utils import (
 
 
 def clean_float_string(val):
-    if not val or str(val).strip().lower() in ["nan", "none", "", "інформація відсутня"]: 
+    if not val or str(val).strip().lower() in ["nan", "none", "", "інформація відсутня"]:
         return ""
     val_str = str(val).strip()
     if val_str.endswith(".0"):
@@ -35,7 +35,7 @@ def get_lease_reg_num(db_data):
     return clean_float_string(reg_num)
 
 def safe_date(val):
-    if not val or str(val).strip().lower() in ["nan", "none", "nat", ""]: 
+    if not val or str(val).strip().lower() in ["nan", "none", "nat", ""]:
         return None
     return parse_to_date(val)
 
@@ -43,11 +43,11 @@ def safe_date(val):
 def render_group_requisites(cadastral_number, db_data, existing_audit, contract_type, counterparty_type):
     result = {}
     is_edit_mode = bool(existing_audit)
-    
+
     # Розширюємо дозволений діапазон дат: з 1990 до 2100 року
     MIN_DATE = datetime.date(1990, 1, 1)
     MAX_DATE = datetime.date(2100, 12, 31)
-    
+
     def get_val(key, db_fallback=""):
         if is_edit_mode:
             val = existing_audit.get(key)
@@ -55,13 +55,15 @@ def render_group_requisites(cadastral_number, db_data, existing_audit, contract_
         return db_fallback
 
     def manage_date_state(field_name, default_value):
+        """Повертає (значення за замовчуванням, ключ віджета).
+        Стан віджета зберігає сам Streamlit за key — вручну в session_state не пишемо,
+        інакше з'являється попередження 'created with a default value but also had its value set via Session State API'.
+        """
         key = f"date_{field_name}_{cadastral_number}"
-        if key not in st.session_state:
-            st.session_state[key] = safe_date(default_value)
-        return st.session_state[key], key
+        return safe_date(default_value), key
 
     with st.expander("📋 Група 1: Реквізити договору", expanded=True):
-        
+
         db_owner = get_owner_name(db_data)
         db_doc_num = clean_float_string(get_db_val(db_data, 'usage_doc_number'))
         db_lease_reg_num = get_lease_reg_num(db_data)
@@ -80,7 +82,7 @@ def render_group_requisites(cadastral_number, db_data, existing_audit, contract_
         result["dkp_contract_number"] = c_num3.text_input("Номер договору ДКП", value=str(get_val("dkp_contract_number", db_dkp_num)))
 
         st.write("---")
-        
+
         # 2. СТОРОНИ ДОГОВОРУ
         if contract_type == "Суборенда" and counterparty_type == "Фізична":
             c1, c2, c3 = st.columns([2, 2, 1])
@@ -102,7 +104,7 @@ def render_group_requisites(cadastral_number, db_data, existing_audit, contract_
         st.write("---")
         saved_owner_changed = existing_audit.get("owner_changed", False) if is_edit_mode else False
         result["owner_changed"] = st.checkbox("Зміна власника", value=bool(saved_owner_changed))
-        
+
         if result["owner_changed"]:
             result["new_owner_name"] = st.text_input("Новий власник (ПІБ / Назва)", value=str(get_val("new_owner_name", "")))
         else:
@@ -112,28 +114,28 @@ def render_group_requisites(cadastral_number, db_data, existing_audit, contract_
 
         # 4. ДАТИ ТА СТРОКИ
         c3, c4, c5 = st.columns(3)
-        
+
         val_sign_date = existing_audit.get("sign_date") if is_edit_mode else get_db_val(db_data, 'usage_doc_date')
         v_sign, k_sign = manage_date_state("sign", val_sign_date)
         result["sign_date"] = c3.date_input("Дата підписання", value=v_sign, min_value=MIN_DATE, max_value=MAX_DATE, key=k_sign, format="DD.MM.YYYY")
-        
+
         val_reg_date = existing_audit.get("reg_date_property_right") if is_edit_mode else get_calculated_reg_date(cadastral_number, db_data)
         v_reg, k_reg = manage_date_state("reg", val_reg_date)
         result["reg_date_property_right"] = c4.date_input("Дата реєстрації права", value=v_reg, min_value=MIN_DATE, max_value=MAX_DATE, key=k_reg, format="DD.MM.YYYY")
-        
+
         entry_opts = [
-            "З моменту підписання", 
-            "З моменту реєстрації права", 
-            "З моменту реєстрації договору", 
+            "З моменту підписання",
+            "З моменту реєстрації права",
+            "З моменту реєстрації договору",
             "з дати підписання та державної реєстрації договору"
         ]
         saved_entry = str(get_val("entry_into_force_type", "З моменту підписання"))
         result["entry_into_force_type"] = c5.selectbox("Тип набуття чинності", entry_opts, index=entry_opts.index(saved_entry) if saved_entry in entry_opts else 0)
-        
+
         c6, c7, c8 = st.columns(3)
         validity_term = c6.text_input("Строк дії (роки)", value=str(get_val("validity_term", get_db_val(db_data, 'usage_term'))))
         result["validity_term"] = extract_years(validity_term)
-        
+
         val_end_date = existing_audit.get("end_date") if is_edit_mode else get_db_val(db_data, 'usage_end_date_calculated')
         v_end, k_end = manage_date_state("end", val_end_date)
         result["end_date"] = c7.date_input("Дата закінчення", value=v_end, min_value=MIN_DATE, max_value=MAX_DATE, key=k_end, format="DD.MM.YYYY")

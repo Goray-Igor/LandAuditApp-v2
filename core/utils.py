@@ -1,8 +1,14 @@
-import re
 import datetime
+import re
+
 import pandas as pd
 from sqlalchemy import text
+
 from core.database import get_engine
+from core.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def clean_numeric(val):
     """Очищення чисел: заміна коми на крапку та видалення пробілів."""
@@ -19,7 +25,7 @@ def extract_years(text_val):
 def parse_to_date(date_str):
     """Гнучкий парсинг дат з різних форматів."""
     if pd.isna(date_str) or not date_str or str(date_str).strip() in ["", "None", "nan", "-"]: return None
-    if isinstance(date_str, (datetime.date, datetime.datetime, pd.Timestamp)): 
+    if isinstance(date_str, (datetime.date, datetime.datetime, pd.Timestamp)):
         return date_str.date() if isinstance(date_str, datetime.datetime) else date_str
     s = str(date_str).strip().split(" ")[0]
     try:
@@ -52,13 +58,15 @@ def get_calculated_reg_date(cadastral_number, db_data):
         drrp = db_data.get('usage_reg_date_drrp'); dzk = db_data.get('usage_reg_date_dzk')
         if pd.notna(drrp) and str(drrp).strip() not in ["", "None", "nan", "-"]: return parse_to_date(drrp)
         return parse_to_date(dzk)
-    except: return None
+    except Exception:
+        logger.exception("Помилка розрахунку дати реєстрації права: %s", cadastral_number)
+        return None
 
 def get_saved_val(existing_audit, audit_key, default_val):
     """Безпечно дістає збережене значення з бази аудиту, якщо воно є."""
     if existing_audit and audit_key in existing_audit:
         val = existing_audit[audit_key]
-        if pd.notna(val): 
+        if pd.notna(val):
             return val
     return default_val
 
@@ -75,12 +83,12 @@ def get_owner_name(db_data):
     """
     if not db_data:
         return ""
-    
+
     # Сначала пробуем РРП
     owner = db_data.get('owner_drrp')
-    
+
     # Если в РРП пусто или написано 'Інформація відсутня', берем ДЗК
     if not owner or str(owner).strip().lower() in ["nan", "none", "", "інформація відсутня"]:
         owner = db_data.get('owner_dzk')
-        
+
     return str(owner).strip() if owner else ""
