@@ -1,9 +1,10 @@
 import os
-import urllib.parse
+from functools import lru_cache
 
 import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
 
 from core.logger import get_logger
 
@@ -18,20 +19,34 @@ DB_DATABASE = os.getenv("DB_DATABASE")
 DB_USERNAME = os.getenv("DB_USERNAME")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
+@lru_cache(maxsize=1)
 def get_engine():
-    """Створює та повертає об'єкт підключення до бази даних SQLAlchemy."""
-    # Кодуємо пароль, щоб уникнути помилок, якщо в ньому є спецсимволи (наприклад, @ або !)
-    encoded_password = urllib.parse.quote_plus(DB_PASSWORD)
+    """Повертає єдиний на процес SQLAlchemy engine (з пулом підключень)."""
+    required = {
+        "DB_SERVER": DB_SERVER,
+        "DB_DATABASE": DB_DATABASE,
+        "DB_USERNAME": DB_USERNAME,
+        "DB_PASSWORD": DB_PASSWORD,
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        raise RuntimeError(f"Не задано змінні оточення в .env: {', '.join(missing)}")
 
-    # Формуємо рядок підключення для MS SQL через pyodbc
-    connection_string = (
-        f"mssql+pyodbc://{DB_USERNAME}:{encoded_password}@{DB_SERVER}/{DB_DATABASE}"
-        "?driver=ODBC+Driver+17+for+SQL+Server"
+    # URL.create сам екранує спецсимволи в логіні/паролі
+    url = URL.create(
+        "mssql+pyodbc",
+        username=DB_USERNAME,
+        password=DB_PASSWORD,
+        host=DB_SERVER,
+        database=DB_DATABASE,
+        query={"driver": "ODBC Driver 17 for SQL Server"},
     )
-
-    # Створюємо двигун (engine)
-    engine = create_engine(connection_string, fast_executemany=True)
-    return engine
+    return create_engine(
+        url,
+        fast_executemany=True,
+        pool_pre_ping=True,   # перевіряє "мертві" підключення перед використанням
+        pool_recycle=1800,    # оновлює підключення старше 30 хв
+    )
 
 def test_connection():
     """Тестує підключення до бази даних."""
