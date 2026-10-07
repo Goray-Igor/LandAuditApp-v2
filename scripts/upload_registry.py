@@ -18,7 +18,7 @@ def clean_area_value(val):
 
 def upload_excel_to_parcel_reestr(file_path):
     print(f"⏳ Чтение файла: {file_path}...")
-    
+
     if not os.path.exists(file_path):
         print("❌ Ошибка: Файл не найден!")
         return
@@ -42,11 +42,11 @@ def upload_excel_to_parcel_reestr(file_path):
         # 3. Подключение к базе и загрузка
         engine = get_engine()
         print("⏳ Загрузка данных в таблицу Parcel_reestr (это может занять пару минут)...")
-        
-        # chunksize=1000 разбивает загрузку на пакеты по 1000 строк 
+
+        # chunksize=1000 разбивает загрузку на пакеты по 1000 строк
         # (чтобы не перегрузить оперативную память, если файл огромный)
         df.to_sql('Parcel_reestr', con=engine, if_exists='append', index=False, chunksize=1000)
-        
+
         print("🎉 УСПЕШНО! Все данные загружены в базу.")
 
     except Exception as e:
@@ -56,5 +56,5 @@ if __name__ == "__main__":
     # --- НАСТРОЙКА ---
     # Укажи здесь точный путь к твоему Excel-файлу
     EXCEL_FILE_PATH = r"C:\LandAuditApp\data\Download_reestr.xlsx"
-    
+
     upload_excel_to_parcel_reestr(EXCEL_FILE_PATH)

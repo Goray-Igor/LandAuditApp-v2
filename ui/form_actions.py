@@ -9,11 +9,11 @@ def render_form_actions(cadastral_number, existing_audit, audit_data, agreements
     Приймає дані з будь-якої форми і відповідні функції для роботи з БД.
     """
     admin_password_correct = os.getenv("ADMIN_PASSWORD", "12345")
-    
+
     edit_key = f"edit_mode_{cadastral_number}"
     confirm_save_key = f"confirm_save_{cadastral_number}"
     confirm_update_key = f"confirm_update_{cadastral_number}"
-    
+
     if edit_key not in st.session_state: st.session_state[edit_key] = False
     if confirm_save_key not in st.session_state: st.session_state[confirm_save_key] = False
     if confirm_update_key not in st.session_state: st.session_state[confirm_update_key] = False
@@ -27,7 +27,7 @@ def render_form_actions(cadastral_number, existing_audit, audit_data, agreements
             if col_btn.button("🔓 РОЗБЛОКУВАТИ", width="stretch"):
                 if edit_password == admin_password_correct:
                     st.session_state[edit_key] = True
-                    st.rerun() 
+                    st.rerun()
                 else:
                     st.error("❌ Невірний пароль! Зверніться до керівника.")
         else:
@@ -42,10 +42,10 @@ def render_form_actions(cadastral_number, existing_audit, audit_data, agreements
                 if col_yes.button("✅ ТАК, ОНОВИТИ", width="stretch", type="primary"):
                     with st.spinner("Оновлюємо дані..."):
                         # Викликаємо передану функцію оновлення
-                        success = update_func(audit_data, agreements_to_save) 
+                        success = update_func(audit_data, agreements_to_save)
                     if success:
                         st.success(f"✅ Дані по ділянці {cadastral_number} успішно оновлено!")
-                        st.session_state[edit_key] = False 
+                        st.session_state[edit_key] = False
                         st.session_state[confirm_update_key] = False
                         st.balloons()
                     else: st.error("❌ Помилка при оновленні.")
@@ -63,7 +63,7 @@ def render_form_actions(cadastral_number, existing_audit, audit_data, agreements
             if col_yes.button("✅ ТАК, ЗБЕРЕГТИ", width="stretch", type="primary"):
                 with st.spinner("Зберігаємо дані в базу..."):
                     # Викликаємо передану функцію збереження
-                    success = save_func(audit_data, agreements_to_save) 
+                    success = save_func(audit_data, agreements_to_save)
                 if success:
                     st.success(f"✅ Дані по ділянці {cadastral_number} успішно збережено в SQL!")
                     st.session_state[confirm_save_key] = False
