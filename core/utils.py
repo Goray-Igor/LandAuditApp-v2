@@ -14,7 +14,8 @@ def clean_numeric(val):
     """Очищення чисел: заміна коми на крапку та видалення пробілів."""
     if val is None or str(val).strip() in ["", "-", "None"]: return 0.0
     try: return float(str(val).replace(',', '.').replace(' ', '').strip())
-    except: return 0.0
+    except (ValueError, TypeError):
+        return 0.0
 
 def extract_years(text_val):
     """Витягує лише цифри з тексту (наприклад, '15 років' -> '15')."""
@@ -31,14 +32,17 @@ def parse_to_date(date_str):
     try:
         if "." in s: return datetime.datetime.strptime(s, "%d.%m.%Y").date()
         elif "-" in s: return datetime.datetime.strptime(s, "%Y-%m-%d").date()
-    except: return None
+    except ValueError:
+        return None
     return None
 
 def format_area(val):
     """Примусове форматування площі до 4 знаків після коми."""
     if val is None or pd.isna(val) or str(val).strip() in ["", "None", "nan", "-"]: return ""
-    try: return f"{float(str(val).replace(',', '.').replace(' ', '')):.4f}"
-    except: return str(val).strip()
+    try:
+        return f"{float(str(val).replace(',', '.').replace(' ', '')):.4f}"
+    except (ValueError, TypeError):
+        return str(val).strip()
 
 def get_calculated_reg_date(cadastral_number, db_data):
     """Вираховує дату реєстрації права з реєстрів."""
