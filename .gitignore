@@ -1,0 +1,39 @@
+# Окружение и секреты
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Сборка PyInstaller (run_app.spec остаётся в репозитории)
+build/
+dist/
+
+# Данные и выгрузки (реестры, реальные данные)
+data/*
+!data/.gitkeep
+*.xlsx
+*.xls
+*.csv
+*.bak
+*.mdf
+*.ldf
+~$*
+
+# Логи
+*.log
+
+# IDE / ОС
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
