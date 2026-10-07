@@ -183,59 +183,67 @@ def get_additional_agreements(cadastral_number, contract_type, counterparty_type
         logger.exception("Помилка читання додаткових угод: %s", cadastral_number)
         return []
 
+def _insert_audit(conn, audit_data, agreements_list=None):
+    """Вставляє основний договір і додаткові угоди через переданий connection (без власного commit)."""
+    table_name = get_target_table(audit_data['contract_type'], audit_data['counterparty_type'])
+    agr_table_name = get_agreements_table(audit_data['contract_type'], audit_data['counterparty_type'])
+    if not table_name:
+        raise ValueError(
+            f"Не знайдено таблицю для {audit_data['contract_type']}/{audit_data['counterparty_type']}"
+        )
+
+    df_main = pd.DataFrame([audit_data])
+    df_main['updated_at'] = pd.Timestamp.now()
+    df_main = df_main.drop(columns=['id'], errors='ignore')
+    df_main.to_sql(table_name, con=conn, if_exists='append', index=False)
+
+    if agreements_list and agr_table_name:
+        df_agr = pd.DataFrame(agreements_list)
+        df_agr['cadastral_number'] = audit_data['cadastral_number']
+        df_agr['auditor_code'] = audit_data['auditor_code']
+        df_agr['updated_at'] = pd.Timestamp.now()
+        df_agr = df_agr.drop(columns=['id'], errors='ignore')
+        df_agr.to_sql(agr_table_name, con=conn, if_exists='append', index=False)
+
+
 def update_audit_lease(audit_data, agreements_list=None):
     table_name = get_target_table(audit_data['contract_type'], audit_data['counterparty_type'])
     agr_table_name = get_agreements_table(audit_data['contract_type'], audit_data['counterparty_type'])
 
     engine = get_engine()
     try:
-        with engine.begin() as conn:
-            conn.execute(text(f"DELETE FROM {table_name} WHERE cadastral_number = :cad_num AND contract_type = :ct AND counterparty_type = :cpt"),
-                         {"cad_num": audit_data['cadastral_number'], "ct": audit_data['contract_type'], "cpt": audit_data['counterparty_type']})
-
+        with engine.begin() as conn:  # DELETE + INSERT в одній транзакції
+            conn.execute(
+                text(f"DELETE FROM {table_name} WHERE cadastral_number = :cad_num AND contract_type = :ct AND counterparty_type = :cpt"),
+                {"cad_num": audit_data['cadastral_number'], "ct": audit_data['contract_type'], "cpt": audit_data['counterparty_type']},
+            )
             if agr_table_name:
-                conn.execute(text(f"DELETE FROM {agr_table_name} WHERE cadastral_number = :cad_num"),
-                             {"cad_num": audit_data['cadastral_number']})
+                conn.execute(
+                    text(f"DELETE FROM {agr_table_name} WHERE cadastral_number = :cad_num"),
+                    {"cad_num": audit_data['cadastral_number']},
+                )
+            _insert_audit(conn, audit_data, agreements_list)
 
-        logger.info("Аудит збережено: %s | %s/%s | аудитор=%s",
-            audit_data['cadastral_number'], audit_data['contract_type'],
-            audit_data['counterparty_type'], audit_data.get('auditor_code'))
-
-        return save_audit_lease(audit_data, agreements_list)
+        # Лог пишемо тільки після успішного commit
+        logger.info("Аудит оновлено: %s | %s/%s | аудитор=%s",
+                    audit_data['cadastral_number'], audit_data['contract_type'],
+                    audit_data['counterparty_type'], audit_data.get('auditor_code'))
+        return True
     except Exception as e:
         print(f"Помилка при оновленні: {e}")
         logger.exception("Помилка оновлення аудиту: %s", audit_data.get('cadastral_number'))
         return False
 
+
 def save_audit_lease(audit_data, agreements_list=None):
-    table_name = get_target_table(audit_data['contract_type'], audit_data['counterparty_type'])
-    agr_table_name = get_agreements_table(audit_data['contract_type'], audit_data['counterparty_type'])
-
     engine = get_engine()
-    df_main = pd.DataFrame([audit_data])
-    df_main['updated_at'] = pd.Timestamp.now()
-
-    if 'id' in df_main.columns:
-        df_main = df_main.drop(columns=['id'])
-
     try:
-        df_main.to_sql(table_name, con=engine, if_exists='append', index=False)
-
-        if agreements_list and len(agreements_list) > 0 and agr_table_name:
-            df_agr = pd.DataFrame(agreements_list)
-            df_agr['cadastral_number'] = audit_data['cadastral_number']
-            df_agr['auditor_code'] = audit_data['auditor_code']
-            df_agr['updated_at'] = pd.Timestamp.now()
-
-            if 'id' in df_agr.columns:
-                df_agr = df_agr.drop(columns=['id'])
-
-            df_agr.to_sql(agr_table_name, con=engine, if_exists='append', index=False)
+        with engine.begin() as conn:  # основний договір і допугоди: або все, або нічого
+            _insert_audit(conn, audit_data, agreements_list)
 
         logger.info("Аудит збережено: %s | %s/%s | аудитор=%s",
-            audit_data['cadastral_number'], audit_data['contract_type'],
-            audit_data['counterparty_type'], audit_data.get('auditor_code'))
-
+                    audit_data['cadastral_number'], audit_data['contract_type'],
+                    audit_data['counterparty_type'], audit_data.get('auditor_code'))
         return True
     except Exception as e:
         print(f"Помилка при збереженні: {e}")
