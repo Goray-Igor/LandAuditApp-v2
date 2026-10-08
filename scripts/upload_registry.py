@@ -55,6 +55,6 @@ def upload_excel_to_parcel_reestr(file_path):
 if __name__ == "__main__":
     # --- НАСТРОЙКА ---
     # Укажи здесь точный путь к твоему Excel-файлу
-    EXCEL_FILE_PATH = r"C:\LandAuditApp\data\Download_reestr.xlsx"
+    EXCEL_FILE_PATH = r"C:\Users\IV.Horai\Desktop\UPI\PROJECT\LandAuditApp\data\Download_reestr.xlsx"
 
     upload_excel_to_parcel_reestr(EXCEL_FILE_PATH)

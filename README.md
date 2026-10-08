@@ -18,7 +18,7 @@
 
 ## Стек
 
-Python 3.11/3.12 · Streamlit · pandas · SQLAlchemy + pyodbc (MS SQL Server,
+Python 3.14 · Streamlit · pandas · SQLAlchemy + pyodbc (MS SQL Server,
 ODBC Driver 17) · python-dotenv · openpyxl · PyInstaller (збірка exe).
 
 ## Структура
