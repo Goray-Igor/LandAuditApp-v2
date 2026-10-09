@@ -62,4 +62,12 @@ def render_group_parcel(cadastral_number, db_data, existing_audit, contract_type
                 value=bool(get_saved_val(existing_audit, "has_agrochemical_passport", False))
             )
 
+        result["area_discrepancy_title_vs_contract"] = st.checkbox(
+            "Розбіжність площі в правовстановлюючому документі та договорі",
+            value=bool(get_saved_val(existing_audit, "area_discrepancy_title_vs_contract", False))
+        )
+        result["state_act_area_rounded_2dp"] = st.checkbox(
+            "Державний акт з площею заокругленою до 2-ох цифр після коми",
+            value=bool(get_saved_val(existing_audit, "state_act_area_rounded_2dp", False))
+        )
     return result

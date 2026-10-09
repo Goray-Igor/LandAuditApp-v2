@@ -18,6 +18,13 @@ DB_SERVER = os.getenv("DB_SERVER")
 DB_DATABASE = os.getenv("DB_DATABASE")
 DB_USERNAME = os.getenv("DB_USERNAME")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
+EXTRA_CHECKS_TABLE = "Audit_Extra_Checks"
+EXTRA_CHECK_FIELDS = (
+    "area_discrepancy_title_vs_contract",
+    "state_act_area_rounded_2dp",
+    "lessee_alienation_with_notary_consent",
+    "lessee_bears_destruction_risk",
+)
 
 @lru_cache(maxsize=1)
 def get_engine():
@@ -162,12 +169,30 @@ def check_existing_audit(cadastral_number, contract_type, counterparty_type):
     try:
         with engine.connect() as conn:
             df = pd.read_sql(query, conn, params={"cad_num": cadastral_number, "ct": contract_type, "cpt": counterparty_type})
-        if not df.empty: return df.iloc[0].to_dict()
+        if not df.empty:
+            audit = df.iloc[0].to_dict()
+            audit.update(get_extra_checks(cadastral_number, contract_type, counterparty_type))
+            return audit
         return None
     except Exception as e:
         print(f"Помилка при перевірці дублів: {e}")
         logger.exception("Помилка перевірки дублів: %s/%s/%s", cadastral_number, contract_type, counterparty_type)
         return None
+
+def get_extra_checks(cadastral_number, contract_type, counterparty_type):
+    """Читає додаткові чекбокси (групи 2 і 4) з Audit_Extra_Checks."""
+    engine = get_engine()
+    query = text(
+        f"SELECT {', '.join(EXTRA_CHECK_FIELDS)} FROM {EXTRA_CHECKS_TABLE} "
+        "WHERE cadastral_number = :cad_num AND contract_type = :ct AND counterparty_type = :cpt"
+    )
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql(query, conn, params={"cad_num": cadastral_number, "ct": contract_type, "cpt": counterparty_type})
+        return df.iloc[0].to_dict() if not df.empty else {}
+    except Exception:
+        logger.exception("Помилка читання додаткових чекбоксів: %s", cadastral_number)
+        return {}
 
 def get_additional_agreements(cadastral_number, contract_type, counterparty_type):
     table_name = get_agreements_table(contract_type, counterparty_type)
@@ -192,10 +217,21 @@ def _insert_audit(conn, audit_data, agreements_list=None):
             f"Не знайдено таблицю для {audit_data['contract_type']}/{audit_data['counterparty_type']}"
         )
 
-    df_main = pd.DataFrame([audit_data])
+    main_data = {k: v for k, v in audit_data.items() if k not in EXTRA_CHECK_FIELDS}
+    df_main = pd.DataFrame([main_data])
     df_main['updated_at'] = pd.Timestamp.now()
     df_main = df_main.drop(columns=['id'], errors='ignore')
     df_main.to_sql(table_name, con=conn, if_exists='append', index=False)
+
+    extra_row = {
+        "cadastral_number": audit_data['cadastral_number'],
+        "contract_type": audit_data['contract_type'],
+        "counterparty_type": audit_data['counterparty_type'],
+        "auditor_code": audit_data.get('auditor_code'),
+        "updated_at": pd.Timestamp.now(),
+        **{f: bool(audit_data.get(f, False)) for f in EXTRA_CHECK_FIELDS},
+    }
+    pd.DataFrame([extra_row]).to_sql(EXTRA_CHECKS_TABLE, con=conn, if_exists='append', index=False)
 
     if agreements_list and agr_table_name:
         df_agr = pd.DataFrame(agreements_list)
@@ -215,6 +251,10 @@ def update_audit_lease(audit_data, agreements_list=None):
         with engine.begin() as conn:  # DELETE + INSERT в одній транзакції
             conn.execute(
                 text(f"DELETE FROM {table_name} WHERE cadastral_number = :cad_num AND contract_type = :ct AND counterparty_type = :cpt"),
+                {"cad_num": audit_data['cadastral_number'], "ct": audit_data['contract_type'], "cpt": audit_data['counterparty_type']},
+            )
+            conn.execute(
+                text(f"DELETE FROM {EXTRA_CHECKS_TABLE} WHERE cadastral_number = :cad_num AND contract_type = :ct AND counterparty_type = :cpt"),
                 {"cad_num": audit_data['cadastral_number'], "ct": audit_data['contract_type'], "cpt": audit_data['counterparty_type']},
             )
             if agr_table_name:

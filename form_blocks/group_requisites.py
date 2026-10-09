@@ -8,6 +8,7 @@ from core.utils import (
     get_calculated_reg_date,
     get_db_val,
     get_owner_name,
+    get_saved_val,
     parse_to_date,
 )
 
@@ -105,10 +106,22 @@ def render_group_requisites(cadastral_number, db_data, existing_audit, contract_
         saved_owner_changed = existing_audit.get("owner_changed", False) if is_edit_mode else False
         result["owner_changed"] = st.checkbox("Зміна власника", value=bool(saved_owner_changed))
 
+        is_ind = counterparty_type == "Фізична"
         if result["owner_changed"]:
             result["new_owner_name"] = st.text_input("Новий власник (ПІБ / Назва)", value=str(get_val("new_owner_name", "")))
+            if is_ind:
+                result["new_owner_ipn"] = st.text_input("ІПН нового власника", value=str(get_saved_val(existing_audit, "new_owner_ipn", "")))
+                n1, n2, n3 = st.columns(3)
+                result["new_owner_has_passport_copy"] = n1.checkbox("Копія паспорта нового власника", value=bool(get_saved_val(existing_audit, "new_owner_has_passport_copy", True)))
+                result["new_owner_has_inn_copy"] = n2.checkbox("Копія ІПН нового власника", value=bool(get_saved_val(existing_audit, "new_owner_has_inn_copy", True)))
+                result["new_owner_has_title_deed_copy"] = n3.checkbox("Копія правовстановлюючого документа нового власника", value=bool(get_saved_val(existing_audit, "new_owner_has_title_deed_copy", True)))
         else:
             result["new_owner_name"] = ""
+            if is_ind:
+                result["new_owner_ipn"] = ""
+                result["new_owner_has_passport_copy"] = False
+                result["new_owner_has_inn_copy"] = False
+                result["new_owner_has_title_deed_copy"] = False
 
         st.write("---")
 

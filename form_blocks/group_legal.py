@@ -28,6 +28,15 @@ def render_group_legal(existing_audit, contract_type, counterparty_type, data_gr
         result["reorg_transfer_does_not_terminate"] = c2.checkbox("Реорганізація не припиняє договір", value=bool(get_saved_val(existing_audit, "reorg_transfer_does_not_terminate", True)))
         result["unilateral_termination_allowed"] = c3.checkbox("Розірвання в односторонньому порядку", value=bool(get_saved_val(existing_audit, "unilateral_termination_allowed", False)))
 
+        result["lessee_alienation_with_notary_consent"] = st.checkbox(
+            "Орендар має право на відчуження права оренди земельної ділянки за цим договором за наявності нотаріальної згоди Орендодавця",
+            value=bool(get_saved_val(existing_audit, "lessee_alienation_with_notary_consent", False))
+        )
+        result["lessee_bears_destruction_risk"] = st.checkbox(
+            "Ризик випадкового знищення або пошкодження об'єкта оренди несе Орендар",
+            value=bool(get_saved_val(existing_audit, "lessee_bears_destruction_risk", False))
+        )
+
         st.write("---")
         st.write("**Підписи та Печатки на документі:**")
 
