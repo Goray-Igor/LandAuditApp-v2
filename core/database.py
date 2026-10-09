@@ -341,6 +341,19 @@ def get_dkp_number_by_cadastral(cadastral_number):
         logger.exception("Помилка пошуку ДКП: %s", cadastral_number)
         return ""
 
+def get_previous_lessees_by_cadastral(cadastral_number):
+    """Повертає список унікальних 'Попередніх орендарів' з DKP_reestr для ділянки."""
+    engine = get_engine()
+    query = text("SELECT previous_lessee FROM DKP_reestr WHERE cadastral_number = :cad_num AND previous_lessee IS NOT NULL")
+    try:
+        with engine.connect() as conn:
+            results = conn.execute(query, {"cad_num": cadastral_number}).fetchall()
+        values = [str(row[0]).strip() for row in results if row[0] and str(row[0]).strip()]
+        return list(dict.fromkeys(values))
+    except Exception:
+        logger.exception("Помилка пошуку попереднього орендаря: %s", cadastral_number)
+        return []
+
 # Цей блок виконається тільки якщо запустити саме цей файл (для перевірки)
 if __name__ == "__main__":
     print("Тестуємо підключення...")

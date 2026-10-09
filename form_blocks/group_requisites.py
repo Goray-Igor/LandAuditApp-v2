@@ -2,7 +2,11 @@ import datetime
 
 import streamlit as st
 
-from core.database import get_dkp_number_by_cadastral, get_ipn_by_cadastral
+from core.database import (
+    get_dkp_number_by_cadastral,
+    get_ipn_by_cadastral,
+    get_previous_lessees_by_cadastral,
+)
 from core.utils import (
     extract_years,
     get_calculated_reg_date,
@@ -12,6 +16,36 @@ from core.utils import (
     parse_to_date,
 )
 
+PREVIOUS_LESSEE_OPTIONS = ["ПСП ПЕРЕМОГА", "ПСП МИР", "ПСП ім. ВАТУТІНА", "ПСП ім. АРТЕМОНОВА"]
+PREV_LESSEE_EMPTY = "— не вказано —"
+PREV_LESSEE_CUSTOM = "Інший (вказати вручну)"
+
+
+def render_previous_lessee(cadastral_number, current_value):
+    """Випадаючий список 'Попередній орендар' + ручне введення. Повертає рядок ('' якщо не вказано)."""
+    options = [PREV_LESSEE_EMPTY, *PREVIOUS_LESSEE_OPTIONS, PREV_LESSEE_CUSTOM]
+    current = str(current_value or "").strip()
+
+    custom_text = ""
+    if not current:
+        idx = 0
+    else:
+        # порівнюємо без урахування регістру, щоб 'псп мир' з бази збігся зі списком
+        match = next((o for o in PREVIOUS_LESSEE_OPTIONS if o.casefold() == current.casefold()), None)
+        if match:
+            idx = options.index(match)
+        else:
+            idx = len(options) - 1
+            custom_text = current
+
+    choice = st.selectbox("Попередній орендар", options, index=idx, key=f"prev_lessee_sel_{cadastral_number}")
+    if choice == PREV_LESSEE_CUSTOM:
+        return st.text_input(
+            "Назва попереднього орендаря", value=custom_text, key=f"prev_lessee_txt_{cadastral_number}"
+        ).strip()
+    if choice == PREV_LESSEE_EMPTY:
+        return ""
+    return choice
 
 def clean_float_string(val):
     if not val or str(val).strip().lower() in ["nan", "none", "", "інформація відсутня"]:
@@ -69,6 +103,10 @@ def render_group_requisites(cadastral_number, db_data, existing_audit, contract_
         db_doc_num = clean_float_string(get_db_val(db_data, 'usage_doc_number'))
         db_lease_reg_num = get_lease_reg_num(db_data)
         db_dkp_num = get_dkp_number_by_cadastral(cadastral_number)
+        db_prev_lessees = get_previous_lessees_by_cadastral(cadastral_number)
+        db_prev_lessee = db_prev_lessees[0] if len(db_prev_lessees) == 1 else ""
+        if len(db_prev_lessees) > 1 and not is_edit_mode:
+            st.warning(f"⚠️ У DKP_reestr для цієї ділянки кілька різних орендарів: {' / '.join(db_prev_lessees)}. Оберіть вручну.")
 
         if counterparty_type == "Фізична":
             db_code = get_ipn_by_cadastral(cadastral_number)
@@ -81,6 +119,7 @@ def render_group_requisites(cadastral_number, db_data, existing_audit, contract_
         result["contract_number"] = c_num1.text_input("Номер договору", value=str(get_val("contract_number", db_doc_num)))
         result["lease_reg_number"] = c_num2.text_input("Номер реєстрації оренди (з реєстру)", value=str(get_val("lease_reg_number", db_lease_reg_num)))
         result["dkp_contract_number"] = c_num3.text_input("Номер договору ДКП", value=str(get_val("dkp_contract_number", db_dkp_num)))
+        result["previous_lessee"] = render_previous_lessee(cadastral_number, get_val("previous_lessee", db_prev_lessee))
 
         st.write("---")
 
